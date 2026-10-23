@@ -17,12 +17,20 @@ extern "C" {
 AdrenoHfiStartupStatus AdrenoHfiArcVotes(const uint32_t *levels,size_t level_count,
     const uint8_t *primary,size_t primary_bytes,const uint8_t *secondary,size_t secondary_bytes,
     uint32_t *votes,size_t capacity);
+/* A8xx dependency (MX) votes, a6xx_gmu_rpmh_dep_votes_init: 0xffffffff for the off level, then for each active
+ * level (0x3fff << 14) | (index << 8) | 0xff, index the first MX rail entry at or above the level. Same level and rail
+ * profile rules as AdrenoHfiArcVotes; a level above the rail refuses. Output unchanged on failure. */
+AdrenoHfiStartupStatus AdrenoHfiDependencyVotes(const uint32_t *levels,size_t level_count,
+    const uint8_t *mx,size_t mx_bytes,uint32_t *votes,size_t capacity);
 typedef struct {
     uint32_t address,unit;
     uint16_t width,buswidth;
     uint8_t vcd,fixed;
     uint16_t perfmode;
     uint32_t perfmode_kbps;
+    /* Appended: 1 votes a fixed BCM's perfmode on every nonzero bandwidth, as a6xx_gmu_rpmh_bw_votes_init does for
+     * every non-A7xx GPU (A8xx included); perfmode_kbps is then not used. 0 keeps the A7xx threshold rule. */
+    uint8_t perfmode_all;
 } AdrenoHfiBcm;
 /* Decode exactly eight bytes of BCM aux data; address/buswidth/fixed/perfmode
  * are separately supplied source/platform policy and are preserved. */

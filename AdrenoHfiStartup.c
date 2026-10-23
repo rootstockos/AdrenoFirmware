@@ -27,6 +27,14 @@ AdrenoHfiStartupStatus AdrenoHfiStartupValidate(const AdrenoHfiStartupConfig *c)
         !addresses(c->cnoc_addresses,c->cnoc_count,6) ||
         !addresses(c->ddr_addresses,c->ddr_count,8))return AdrenoHfiStartupInvalid;
     if(c->cnoc_wait_mask>>c->cnoc_count || c->ddr_wait_mask>>c->ddr_count)return AdrenoHfiStartupInvalid;
+    if(c->table_format>1)return AdrenoHfiStartupInvalid;
+    if(!c->table_format) {
+        if(!zero(c->gpu_dependency,16))return AdrenoHfiStartupInvalid;
+    } else {
+        if(c->gpu_dependency[0]!=UINT32_MAX || !zero(c->gpu_dependency+c->gpu_count,16-c->gpu_count))
+            return AdrenoHfiStartupInvalid;
+        for(unsigned i=1;i<c->gpu_count;++i)if(!c->gpu_dependency[i])return AdrenoHfiStartupInvalid;
+    }
     for(unsigned i=0;i<c->cnoc_count;++i)
         for(unsigned j=0;j<c->ddr_count;++j)if(c->cnoc_addresses[i]==c->ddr_addresses[j])return AdrenoHfiStartupInvalid;
     for(unsigned i=0;i<2;++i)if(!zero(c->cnoc_data[i]+c->cnoc_count,6-c->cnoc_count))return AdrenoHfiStartupInvalid;
@@ -56,6 +64,21 @@ AdrenoHfiStartupStatus AdrenoHfiStartupEncode(const AdrenoHfiStartupConfig *c,
     size_t n=0;unsigned message=0;
     switch(stage) {
     case AdrenoHfiStagePerformance:
+        if(c->table_format) {
+            /* a8xx_hfi_send_perf_table: version 0, type GPU_PERF, then the GX entry {count, stride 3: arc vote,
+             * dependency vote, kHz} and the CX entry {count, stride 2: arc vote, kHz}. */
+            message=15;n=6+3*(size_t)c->gpu_count+2*(size_t)c->gmu_count;
+            p[0]=0;p[1]=1;p[2]=c->gpu_count;p[3]=3;
+            for(unsigned i=0;i<c->gpu_count;++i) {
+                p[4+3*i]=c->gpu[i].vote;p[5+3*i]=c->gpu_dependency[i];p[6+3*i]=(uint32_t)(c->gpu[i].hz/1000);
+            }
+            uint32_t *cx=p+4+3*c->gpu_count;
+            cx[0]=c->gmu_count;cx[1]=2;
+            for(unsigned i=0;i<c->gmu_count;++i) {
+                cx[2+2*i]=c->gmu[i].vote;cx[3+2*i]=(uint32_t)(c->gmu[i].hz/1000);
+            }
+            break;
+        }
         message=4;n=58;
         for(size_t i=0;i<n;++i)p[i]=0;
         p[0]=c->gpu_count;p[1]=c->gmu_count;

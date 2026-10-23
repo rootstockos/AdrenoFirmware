@@ -36,6 +36,22 @@ AdrenoHfiStartupStatus AdrenoHfiArcVotes(const uint32_t *levels,size_t count,
     for(size_t i=0;i<count;++i)votes[i]=result[i];
     return AdrenoHfiStartupSuccess;
 }
+AdrenoHfiStartupStatus AdrenoHfiDependencyVotes(const uint32_t *levels,size_t count,
+    const uint8_t *mx,size_t mx_bytes,uint32_t *votes,size_t capacity)
+{
+    if(!levels || !votes || !count || count>16 || capacity<count || levels[0] || !rail(mx,mx_bytes))
+        return AdrenoHfiStartupInvalid;
+    uint32_t result[16];result[0]=UINT32_MAX;
+    for(size_t i=1;i<count;++i) {
+        if(levels[i]>UINT16_MAX || levels[i]<levels[i-1])return AdrenoHfiStartupInvalid;
+        size_t index=0;
+        while(index<mx_bytes/2 && le16(mx+2*index)<levels[i])++index;
+        if(index==mx_bytes/2 || index>255)return AdrenoHfiStartupInvalid;
+        result[i]=UINT32_C(0x3fff)<<14 | (uint32_t)index<<8 | 0xff;
+    }
+    for(size_t i=0;i<count;++i)votes[i]=result[i];
+    return AdrenoHfiStartupSuccess;
+}
 AdrenoHfiStartupStatus AdrenoHfiBcmAux(AdrenoHfiBcm *b,const uint8_t *p,size_t bytes)
 {
     if(!b || !p || bytes!=8 || p[7])return AdrenoHfiStartupInvalid;
@@ -50,7 +66,8 @@ AdrenoHfiStartupStatus AdrenoHfiBuildBandwidth(const uint32_t *kbps,size_t count
     for(size_t i=1;i<count;++i)if(kbps[i]<=kbps[i-1])return AdrenoHfiStartupInvalid;
     for(size_t j=0;j<n;++j) {
         const AdrenoHfiBcm *b=bcms+j;
-        if(!address(b->address) || b->address==cn0 || b->fixed>1 || b->perfmode>0x3fff ||
+        if(!address(b->address) || b->address==cn0 || b->fixed>1 || b->perfmode>0x3fff || b->perfmode_all>1 ||
+            (b->perfmode_all && !b->fixed) ||
             (!b->fixed && (!b->unit || !b->width || !b->buswidth || b->perfmode || b->perfmode_kbps)))
             return AdrenoHfiStartupInvalid;
         for(size_t k=0;k<j;++k)if(b->address==bcms[k].address)return AdrenoHfiStartupInvalid;
@@ -73,7 +90,7 @@ AdrenoHfiStartupStatus AdrenoHfiBuildBandwidth(const uint32_t *kbps,size_t count
                 if(kbps[i]) {
                     data|=0x20000000;
                     if(b->fixed) {
-                        if(b->perfmode_kbps && kbps[i]>=b->perfmode_kbps)data|=b->perfmode;
+                        if(b->perfmode_all || (b->perfmode_kbps && kbps[i]>=b->perfmode_kbps))data|=b->perfmode;
                     } else {
                         uint64_t peak=(uint64_t)kbps[i]*b->width/b->buswidth;
                         peak=peak*1000/b->unit;
